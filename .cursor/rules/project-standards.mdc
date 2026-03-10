@@ -1,0 +1,92 @@
+---
+description: Java 25, Quarkus 3.31.2+ extension standards
+globs: **/*.java
+---
+# Java 25 Extension Library Standards
+
+## Tech Stack
+- Java 25 (Records, pattern matching, enhanced switch, text blocks)
+- Quarkus 3.31.2 Extension (deployment + runtime separation)
+- GraalVM Native Image compatible
+- JUnit 6 + Mockito for testing
+
+## Java 25 Specific Patterns
+
+### Thread Safety & Concurrency
+- **AtomicReference**: Use for thread-safe lazy initialization (current pattern in `HybridTenantConfigResolver`)
+- **Virtual Threads**: Extension should not block carrier threads - design for reactive/async consumers
+- **Avoid ThreadLocal**: Consider future migration to `ScopedValue` (JEP 506) for context propagation if needed
+
+### Modern Java Features
+- **Records**: Use for immutable data transfer objects and configuration snapshots
+- **Pattern Matching**: Use in switch expressions and instanceof checks
+- **Sealed Classes**: Consider for closed type hierarchies (e.g., sealed `CallerType` if extended)
+- **Text Blocks**: Use for multi-line strings (JWKS, error messages)
+
+### Documentation
+- **Markdown JavaDocs**: Use Markdown formatting in JavaDoc comments (JEP 467) for better IDE rendering
+- Format: Standard JavaDoc with Markdown syntax for lists, code blocks, emphasis
+
+## Architectural Principles
+- **No Lombok**: Use Java Records or plain Java
+- **Constructor Injection**: Always. Never field injection.
+- **Clean Code**: Methods < 20 lines, descriptive names, single responsibility
+- **SOLID**: Extract helpers, favor composition
+
+## Quarkus Extension Patterns
+
+### Module Structure
+- **runtime/**: CDI beans (`@ApplicationScoped`), filters, utilities, config (`@ConfigMapping`)
+- **deployment/**: Build processors with `@BuildStep`, bean registration via `AdditionalBeanBuildItem`
+- **integration-tests/**: Consumer simulation with `@QuarkusTest`
+
+### Build-Time Optimization
+- **Maximize Build Steps**: Move logic to `@BuildStep` methods to minimize runtime footprint
+- **Recorder Pattern**: Keep `@Recorder` methods lean, pass only serializable data
+- **Bean Registration**: All `@ApplicationScoped` beans MUST be registered with `.setUnremovable()` in deployment module
+
+### Configuration
+- **@ConfigMapping Only**: NEVER use `@ConfigProperty`. Always use `@ConfigMapping` interfaces.
+- **Naming**: camelCase in Java → kebab-case in properties
+- **Feature Flags**: `<prefix>.<feature>.enabled` (default: `false`)
+- **Required-When-Enabled**: Use `Optional<T>`, validate in constructors with `IllegalStateException`
+
+## Testing Standards
+
+### JUnit 6 Patterns
+- **Extension Tests**: Use `QuarkusUnitTest` or `QuarkusProdModeTest` to verify build steps
+- **@Nested Classes**: Organize related tests, use `@TestMethodOrder` for execution order
+- **@ExtendWith(MockitoExtension.class)**: For unit tests with mocking
+- **assertAll()**: For multiple related assertions
+
+### Library-Specific Testing
+- **Bean Registration**: Verify all beans injectable in `integration-tests/` module
+- **Config Validation**: Verify `IllegalStateException` thrown for invalid config
+- **Mock External Libraries**: Mock `GoogleCredentials`, `IdTokenCredentials` for GCP tests
+- **Virtual Thread Safe**: Ensure library doesn't block carrier threads
+
+## Error Handling
+- **Fail Fast**: Validate configuration at startup in bean constructors
+- **Actionable Messages**: Include exact property name, context, example if needed
+- **IllegalStateException**: Invalid configuration/initialization
+- **IllegalArgumentException**: Invalid method arguments
+- **Never Catch & Log**: Let exceptions propagate to fail fast
+
+## Logging (JBoss Logger)
+- `DEBUG`: Request-level flow (tenant resolution, token extraction)
+- `INFO`: Initialization events (bean created, config loaded)
+- `WARN`: Config warnings (defaults used, deprecated)
+- `ERROR`: Should be rare - prefer fail fast
+
+## Library Context
+### ❌ What NOT to Include
+- No database access (PanacheRepository, Liquibase, JPA)
+- No REST endpoints (`@Path`, API responses, DTOs)
+- No MapStruct (DTO mapping)
+
+### ✅ What This Library Provides
+- Authentication filters (`ContainerRequestFilter`, `ClientRequestFilter`)
+- OIDC tenant resolution (`TenantConfigResolver`)
+- Identity utilities (JWT claim extraction)
+- Configuration interfaces (`@ConfigMapping`)
+- Thread-safe lazy initialization (`AtomicReference`)

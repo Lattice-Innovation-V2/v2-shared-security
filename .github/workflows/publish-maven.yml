@@ -1,0 +1,152 @@
+name: Publish Maven Artifacts
+
+on:
+  push:
+    branches: [main]
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+
+env:
+  MAVEN_OPTS: -Xmx2g -XX:+TieredCompilation -XX:TieredStopAtLevel=1
+
+jobs:
+  build:
+    name: Build and Test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      version: ${{ steps.get-version.outputs.version }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 25
+        uses: actions/setup-java@v4
+        with:
+          java-version: '25'
+          distribution: 'temurin'
+          cache: 'maven'
+
+      - name: Get version from POM
+        id: get-version
+        run: |
+          VERSION=$(mvn help:evaluate -Dexpression=project.version -q -DforceStdout)
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Project version: $VERSION"
+
+      - name: Run tests
+        run: ./mvnw -B --errors -Dorg.slf4j.simpleLogger.defaultLogLevel=warn -T 1C verify -DskipITs=false
+
+      - name: Store artifacts for publish job
+        uses: actions/upload-artifact@v4
+        with:
+          name: maven-artifacts
+          path: |
+            **/target/*.jar
+            **/pom.xml
+          retention-days: 1
+
+  publish:
+    name: Publish to Artifact Registry
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    outputs:
+      artifact_version: ${{ steps.determine-version.outputs.version }}
+      repository_url: ${{ steps.set-outputs.outputs.repository_url }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 25
+        uses: actions/setup-java@v4
+        with:
+          java-version: '25'
+          distribution: 'temurin'
+          cache: 'maven'
+
+      - name: Authenticate to Google Cloud
+        id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_GH_SERVICE_ACCOUNT }}
+          token_format: 'access_token'
+
+      - name: Determine version and repository URL
+        id: determine-version
+        env:
+          GCP_PROJECT: ${{ vars.GCP_PROJECT_PROD }}
+          MAVEN_REGION: ${{ vars.MAVEN_REPOSITORY_REGION || 'us-central1' }}
+        run: |
+          # Determine version based on trigger
+          if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+            # Release version from tag (remove 'v' prefix)
+            VERSION="${GITHUB_REF#refs/tags/v}"
+            echo "Publishing release version: $VERSION"
+          else
+            # SNAPSHOT version from main branch
+            VERSION="${{ needs.build.outputs.version }}"
+            echo "Publishing snapshot version: $VERSION"
+          fi
+
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "ARTIFACT_VERSION=$VERSION" >> $GITHUB_ENV
+
+          # Set repository URL
+          REPO_URL="artifactregistry://${MAVEN_REGION}-maven.pkg.dev/${GCP_PROJECT}/maven-libs"
+          echo "repository_url=$REPO_URL" >> $GITHUB_OUTPUT
+          echo "REPOSITORY_URL=$REPO_URL" >> $GITHUB_ENV
+
+      - name: Create Maven settings.xml
+        env:
+          AR_TOKEN: ${{ steps.auth.outputs.access_token }}
+        run: |
+          mkdir -p ~/.m2
+          cat > ~/.m2/settings.xml << 'EOF'
+          <settings xmlns="http://maven.apache.org/SETTINGS/1.0.0"
+                    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                    xsi:schemaLocation="http://maven.apache.org/SETTINGS/1.0.0
+                                        https://maven.apache.org/xsd/settings-1.0.0.xsd">
+            <servers>
+              <server>
+                <id>artifact-registry</id>
+                <username>oauth2accesstoken</username>
+                <password>${env.AR_TOKEN}</password>
+              </server>
+            </servers>
+          </settings>
+          EOF
+
+      - name: Update version for release
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          VERSION="${GITHUB_REF#refs/tags/v}"
+          ./mvnw -B --errors -Dorg.slf4j.simpleLogger.defaultLogLevel=warn versions:set -DnewVersion=$VERSION -DgenerateBackupPoms=false
+
+      - name: Publish to Artifact Registry
+        run: ./mvnw -B --errors -Dorg.slf4j.simpleLogger.defaultLogLevel=warn -DskipTests deploy 
+
+      - name: Set output summary
+        id: set-outputs
+        run: |
+          echo "### Maven Artifact Published :rocket:" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Version:** \`${{ env.ARTIFACT_VERSION }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Repository:** \`${{ env.REPOSITORY_URL }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Artifact:** \`io.latticepay:latticepay-security:${{ env.ARTIFACT_VERSION }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "#### Consumer Integration" >> $GITHUB_STEP_SUMMARY
+          echo '```xml' >> $GITHUB_STEP_SUMMARY
+          echo '<dependency>' >> $GITHUB_STEP_SUMMARY
+          echo '  <groupId>io.latticepay</groupId>' >> $GITHUB_STEP_SUMMARY
+          echo '  <artifactId>latticepay-security</artifactId>' >> $GITHUB_STEP_SUMMARY
+          echo "  <version>${{ env.ARTIFACT_VERSION }}</version>" >> $GITHUB_STEP_SUMMARY
+          echo '</dependency>' >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY

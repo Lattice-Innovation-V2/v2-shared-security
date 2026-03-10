@@ -1,0 +1,35 @@
+---
+description: Global standards for all files
+globs: **/*
+alwaysApply: true
+---
+# Global Standards
+
+- Java 25 with Quarkus 3.31.2 extension best practices
+- Configuration-driven: All features via `@ConfigMapping` with feature flags
+- GraalVM Native compatible: Avoid reflection, use build-time wiring
+- Documentation in `docs/` for Staff(+) Engineer audience
+- Javadocs written in Markdown format
+
+## Quarkus Extension Architecture
+
+### Module Separation (Critical)
+- **Runtime** (`runtime/`): CDI beans, filters, utilities, config interfaces. NO build-time logic.
+- **Deployment** (`deployment/`): Build processors with `@BuildStep`. NO runtime logic.
+- Never mix deployment and runtime code in the same class.
+
+### CDI Bean Registration
+- All `@ApplicationScoped` beans MUST be registered in `LatticeSecurityProcessor`
+- Pattern: `AdditionalBeanBuildItem.builder().addBeanClasses(...).setUnremovable().build()`
+- Ensures automatic discovery without consumer `quarkus.index-dependency` configuration
+
+### Configuration Pattern
+- Root: `@ConfigMapping(prefix = "latticepay.security")`
+- Nested interfaces for feature groups: `Iap`, `Gcip`, `ForwardedAuth`, `GcpServiceAuth`
+- NEVER use `@ConfigProperty` - always use `@ConfigMapping`
+
+## Feature Flag Pattern
+- Feature flag: `latticepay.security.<feature>.enabled` (default: `false`)
+- Required-when-enabled: Use `Optional<T>`, validate in constructors
+- Fail fast: Throw `IllegalStateException` with actionable message if invalid
+- Error format: "latticepay.security.X.Y is required when latticepay.security.X.enabled=true"

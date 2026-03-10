@@ -1,0 +1,94 @@
+---
+description: Library-specific context
+alwaysApply: false
+---
+# Latticepay Security Library Context
+
+## Role
+Quarkus extension providing authentication/authorization infrastructure for Latticepay services. NOT a standalone service.
+
+## Architecture
+
+### Structure
+```
+latticepay-security/
+├── runtime/                    # CDI beans, filters, utilities
+│   └── io/latticepay/security/
+│       ├── auth/              # HybridTenantConfigResolver, ForwardedAuthFilter, InternalOnlyFilter
+│       ├── identity/          # IdentityUtils, CallerType
+│       ├── gcp/               # GcpTokenProvider, DefaultGcpTokenProvider, GcpIamClientFilter
+│       └── config/            # LatticeSecurityConfig
+├── deployment/                 # LatticeSecurityProcessor (bean registration)
+├── integration-tests/          # @QuarkusTest consumer simulation
+└── docs/                       # Architecture docs
+```
+
+## Key Components
+
+### auth/
+- `HybridTenantConfigResolver`: Selects IAP or GCIP tenant based on request headers. Uses `AtomicReference` for thread-safe lazy tenant config initialization.
+- `ForwardedAuthFilter`: Copies `X-Forwarded-Authorization` → `Authorization` from trusted proxy IPs only.
+- `InternalOnlyFilter`: Rejects requests from external users (enforces INTERNAL_USER caller type).
+
+### identity/
+- `IdentityUtils`: JWT claim extraction (email, entity_id, caller type).
+- `CallerType`: Enum (INTERNAL_USER, EXTERNAL_USER).
+
+### gcp/
+- `GcpTokenProvider`: Interface for GCP IAM identity token provision.
+- `DefaultGcpTokenProvider`: Uses Google Application Default Credentials with `AtomicReference` for thread-safe lazy credential initialization.
+- `GcpIamClientFilter`: JAX-RS `ClientRequestFilter` attaching GCP IAM tokens to outbound requests.
+
+### config/
+- `LatticeSecurityConfig`: Root `@ConfigMapping(prefix = "latticepay.security")` with nested groups:  - `Iap`: IAP tenant settings  - `Gcip`: GCIP tenant settings  - `ForwardedAuth`: Forwarded auth filter settings  - `GcpServiceAuth`: Outbound GCP IAM auth settings
+
+## Design Principles
+
+1. **Reusability**: Works across services, no service-specific logic
+2. **Configuration-Driven**: All features opt-in via `enabled` flags
+3. **Zero Magic**: Explicit bean registration, no hidden auto-config
+4. **Consumer-Friendly**: Minimal config, clear errors
+
+## Implementation Patterns
+
+### Authentication Flows
+**Inbound** (User):
+- IAP: Internal users via `x-goog-iap-jwt-assertion` header
+- GCIP: External users via `Authorization: Bearer` header
+- `HybridTenantConfigResolver` auto-selects based on headers
+
+**Outbound** (Service-to-Service):
+- `GcpIamClientFilter` attaches GCP IAM tokens
+- Inbound GCP IAM validation by Cloud Run (IAM `roles/run.invoker`), NOT this library
+
+### Thread Safety
+Use `AtomicReference` for lazy initialization. Pattern: check if already initialized, if not initialize and set atomically, return the value. See `HybridTenantConfigResolver` and `DefaultGcpTokenProvider` for reference implementations.
+
+### Configuration Validation
+Validate required-when-enabled in bean constructors. Throw `IllegalStateException` with message format: "latticepay.security.X.Y is required when latticepay.security.X.enabled=true"
+
+### Logging
+- `DEBUG`: Request flow (tenant resolution, token ops)
+- `INFO`: Bean initialization, config loaded
+- `WARN`: Config warnings (defaults, deprecated)
+- `ERROR`: Rare - prefer fail fast
+
+## Testing Patterns
+
+### Unit Tests
+- JUnit 6 + Mockito
+- Mock `JsonWebToken`, `LatticeSecurityConfig`
+- Use `@Nested` for organization
+
+### Integration Tests
+- `@QuarkusTest` in `integration-tests/` module
+- `@TestSecurity` + `@OidcSecurity` for JWT simulation
+- Verify bean registration (all beans injectable)
+- Verify config validation (throws `IllegalStateException`)
+
+### GCP Tests
+Mock: `GoogleCredentials`, `IdTokenCredentials`, `AccessToken`
+
+## Library Boundaries
+❌ No database, REST endpoints, MapStruct, business logic
+✅ Auth filters, tenant resolution, identity utils, config, token providers

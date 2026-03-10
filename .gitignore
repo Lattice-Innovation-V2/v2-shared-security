@@ -1,0 +1,80 @@
+# Build output
+target/
+!.mvn/wrapper/maven-wrapper.jar
+!**/src/main/**/target/
+!**/src/test/**/target/
+
+### Maven ###
+.m2/
+settings.xml
+pom.xml.tag
+pom.xml.releaseBackup
+*.releaseBackup
+.flattened-pom.xml
+
+### Quarkus / GraalVM ###
+.quarkus/
+quarkus-app/
+
+### Java ###
+*.class
+*.log
+*.jar
+!**/maven-wrapper.jar
+*.war
+*.ear
+*.zip
+hs_err_pid*
+replay_pid*
+
+### Test / reports (optional; uncomment to ignore)
+# surefire-reports/
+# failsafe-reports/
+
+### STS / Eclipse ###
+.apt_generated
+.classpath
+.factorypath
+.project
+.settings
+.springBeans
+.sts4-cache
+
+### IntelliJ IDEA ###
+.idea
+*.iws
+*.iml
+*.ipr
+out/
+
+### VS Code ###
+.vscode/
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+*.code-workspace
+
+### Cursor ###
+.cursor/cache/
+
+### OS ###
+.DS_Store
+.DS_Store?
+Thumbs.db
+ehthumbs.db
+
+### Editor / temp ###
+*.swp
+*.swo
+*~
+.tmp
+tmp/
+temp/
+
+### Local env / secrets (do not commit) ###
+.env
+.env.local
+.env.*.local
+*.pem
+*.key

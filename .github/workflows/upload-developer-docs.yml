@@ -1,0 +1,23 @@
+name: Publish Integrator Service Docs to Confluence
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'docs/**'
+  workflow_dispatch:
+    inputs:
+      confluence_parent_id:
+        description: 'Confluence parent page ID (overrides default)'
+        required: false
+
+jobs:
+  publish:
+    permissions:
+      contents: read
+    uses: latticeorg/.github/.github/workflows/publish-confluence-docs.yml@main
+    with:
+      confluence_parent_id: ${{ inputs.confluence_parent_id || vars.CONFLUENCE_PARENT_ID }}
+      docs_path: 'docs'
+    secrets: inherit
