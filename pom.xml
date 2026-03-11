@@ -47,6 +47,14 @@
         </dependencies>
     </dependencyManagement>
 
+    <distributionManagement>
+        <repository>
+            <id>github</id>
+            <name>GitHub Packages</name>
+            <url>https://maven.pkg.github.com/Lattice-Innovation-V2/v2-shared-security</url>
+        </repository>
+    </distributionManagement>
+
     <build>
         <plugins>
             <plugin>
