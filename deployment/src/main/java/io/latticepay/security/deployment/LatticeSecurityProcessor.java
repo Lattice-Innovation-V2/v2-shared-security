@@ -23,9 +23,7 @@ import io.quarkus.arc.deployment.AdditionalBeanBuildItem;
 import io.quarkus.deployment.annotations.BuildStep;
 import io.quarkus.deployment.builditem.ConfigMappingBuildItem;
 import io.quarkus.deployment.builditem.FeatureBuildItem;
-import io.quarkus.deployment.builditem.LaunchModeBuildItem;
 import io.quarkus.deployment.builditem.nativeimage.ReflectiveClassBuildItem;
-import io.quarkus.runtime.LaunchMode;
 
 /**
  * Build-time processor for Latticepay Security extension.
@@ -68,19 +66,18 @@ class LatticeSecurityProcessor {
     }
 
     /**
-     * Registers dev-tenant support beans only in DEVELOPMENT and TEST modes.
-     * In production builds ({@link LaunchMode#NORMAL}), these beans are excluded entirely,
-     * making the dev tenant impossible to activate regardless of runtime configuration.
+     * Registers dev-tenant support beans in ALL launch modes.
+     * The runtime guard ({@code latticepay.security.dev.restrict-to-dev-profile}, default true)
+     * prevents the dev tenant from being used outside the "dev" profile unless explicitly opted out.
+     * The bean must always be available so the runtime can read the active profile and make
+     * the decision (rather than failing at build time for sandbox/innovation deployments).
      */
     @BuildStep
-    AdditionalBeanBuildItem registerDevBeans(LaunchModeBuildItem launchMode) {
-        return switch (launchMode.getLaunchMode()) {
-            case NORMAL -> null;
-            default -> AdditionalBeanBuildItem.builder()
-                    .addBeanClasses(ActiveProfileSupplier.class)
-                    .setUnremovable()
-                    .build();
-        };
+    AdditionalBeanBuildItem registerDevBeans() {
+        return AdditionalBeanBuildItem.builder()
+                .addBeanClasses(ActiveProfileSupplier.class)
+                .setUnremovable()
+                .build();
     }
 
     /**

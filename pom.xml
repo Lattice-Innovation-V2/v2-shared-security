@@ -11,7 +11,7 @@
     <description>Quarkus extension library for LatticePay security: Hybrid OIDC auth (IAP + GCIP), ForwardedAuthFilter, IdentityUtils, and GCP IAM service-to-service auth</description>
 
     <properties>
-        <revision>0.6.3</revision>
+        <revision>0.6.4</revision>
         <compiler-plugin.version>3.15.0</compiler-plugin.version>
         <failsafe-plugin.version>${surefire-plugin.version}</failsafe-plugin.version>
         <maven.compiler.release>21</maven.compiler.release>
