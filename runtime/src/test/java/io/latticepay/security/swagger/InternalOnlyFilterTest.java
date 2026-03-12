@@ -48,6 +48,9 @@ class InternalOnlyFilterTest {
     private IdentityUtils mockIdentityUtils;
 
     @Mock
+    private Instance<JsonWebToken> mockJwtInstance;
+
+    @Mock
     private JsonWebToken mockJwt;
 
     @Mock
@@ -62,11 +65,13 @@ class InternalOnlyFilterTest {
     void setUp() {
         when(mockConfigInstance.isResolvable()).thenReturn(true);
         when(mockConfigInstance.get()).thenReturn(mockConfig);
+        when(mockJwtInstance.isResolvable()).thenReturn(true);
+        when(mockJwtInstance.get()).thenReturn(mockJwt);
         when(mockConfig.swaggerProtection()).thenReturn(mockSwaggerProtection);
         when(mockSwaggerProtection.enabled()).thenReturn(true);
         when(mockRequestContext.getUriInfo()).thenReturn(mockUriInfo);
 
-        filter = new InternalOnlyFilter(mockConfigInstance, mockJwt, mockIdentityUtils);
+        filter = new InternalOnlyFilter(mockConfigInstance, mockJwtInstance, mockIdentityUtils);
     }
 
     @Nested

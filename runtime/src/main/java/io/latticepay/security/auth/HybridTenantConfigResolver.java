@@ -76,24 +76,32 @@ public class HybridTenantConfigResolver implements TenantConfigResolver {
 
     /**
      * Validates that the dev tenant is only used when the active profile is "dev" (bean present), then returns the supplier.
+     * When {@code restrictToDevProfile} is false, the profile check is skipped (for sandbox/innovation deployments).
      *
-     * @throws IllegalStateException if dev is enabled but not available (production build) or profile is not "dev"
+     * @throws IllegalStateException if dev is enabled but not available (production build) or profile restriction is violated
      */
-    private static ActiveProfileSupplier resolveDevProfileSupplier(Instance<ActiveProfileSupplier> instance) {
+    private ActiveProfileSupplier resolveDevProfileSupplier(Instance<ActiveProfileSupplier> instance) {
         if (instance.isUnsatisfied()) {
             throw new IllegalStateException(
                     "latticepay.security.dev.enabled=true but the dev tenant is not available in production builds. " +
                             "The dev tenant can only be used when running in Quarkus dev mode (quarkus:dev).");
         }
         ActiveProfileSupplier supplier = instance.get();
-        if (!"dev".equals(supplier.getActiveProfile())) {
+        boolean restrictToDevProfile = config.dev().restrictToDevProfile();
+        if (restrictToDevProfile && !"dev".equals(supplier.getActiveProfile())) {
             throw new IllegalStateException(
                     "latticepay.security.dev.enabled=true is only allowed when the Quarkus profile is 'dev'. " +
                             "Current profile: " + supplier.getActiveProfile() + ". " +
-                            "Do not enable the dev tenant in production.");
+                            "Do not enable the dev tenant in production. " +
+                            "If this is a sandbox/innovation deployment, set latticepay.security.dev.restrict-to-dev-profile=false.");
         }
-        LOG.warnv("DEV TENANT ENABLED - self-issued JWT tokens will be accepted. " +
-                "This must NEVER be active in production. Profile: {0}", supplier.getActiveProfile());
+        if (!restrictToDevProfile) {
+            LOG.warnv("DEV TENANT ENABLED with restrict-to-dev-profile=false — self-issued JWT tokens will be accepted. " +
+                    "Profile: {0}. This is intended for sandbox/innovation deployments only.", supplier.getActiveProfile());
+        } else {
+            LOG.warnv("DEV TENANT ENABLED - self-issued JWT tokens will be accepted. " +
+                    "This must NEVER be active in production. Profile: {0}", supplier.getActiveProfile());
+        }
         return supplier;
     }
 
@@ -113,9 +121,13 @@ public class HybridTenantConfigResolver implements TenantConfigResolver {
             return Uni.createFrom().item(getForwardedIapConfig());
         }
 
-        // 2. Dev tenant: only when profile is "dev", Bearer present and iss matches dev issuer
+        // 2. Dev tenant: Bearer present and iss matches dev issuer.
+        //    When restrictToDevProfile=true (default), also requires profile == "dev".
+        //    When restrictToDevProfile=false, profile check is skipped (sandbox/innovation).
+        boolean devProfileOk = !config.dev().restrictToDevProfile()
+                || "dev".equals(activeProfileSupplier != null ? activeProfileSupplier.getActiveProfile() : null);
         if (config.dev().enabled() && activeProfileSupplier != null
-                && "dev".equals(activeProfileSupplier.getActiveProfile())
+                && devProfileOk
                 && hasBearerToken(context)) {
             Optional<String> bearerValue = getBearerTokenValue(context);
             Optional<String> iss = bearerValue.flatMap(JwtPayloadHelper::getIssuerFromBearerToken);

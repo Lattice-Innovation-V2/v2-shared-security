@@ -219,6 +219,14 @@ public interface LatticeSecurityConfig {
          */
         @WithDefault("any")
         String audience();
+
+        /**
+         * When true (default), the dev tenant is only allowed when the Quarkus profile is "dev".
+         * Set to false for sandbox/innovation deployments that use prod infrastructure
+         * but need dev JWT verification (e.g. V2 sandbox without real IAP).
+         */
+        @WithDefault("true")
+        boolean restrictToDevProfile();
     }
 
     /**

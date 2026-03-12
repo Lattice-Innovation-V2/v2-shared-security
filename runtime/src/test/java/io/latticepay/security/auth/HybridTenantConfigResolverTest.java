@@ -835,6 +835,7 @@ class HybridTenantConfigResolverTest {
         void whenDevEnabled_andProfileNotDev_shouldThrowAtConstruction() {
             when(mockActiveProfileSupplier.getActiveProfile()).thenReturn("prod");
             when(mockDev.enabled()).thenReturn(true);
+            when(mockDev.restrictToDevProfile()).thenReturn(true);
             when(mockIap.clientId()).thenReturn(Optional.of(VALID_IAP_CLIENT_ID));
             when(mockGcip.projectId()).thenReturn(Optional.of(VALID_GCIP_PROJECT_ID));
 

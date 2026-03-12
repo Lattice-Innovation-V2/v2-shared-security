@@ -53,21 +53,22 @@ public class InternalOnlyFilter implements ContainerRequestFilter {
     );
 
     private final Instance<LatticeSecurityConfig> configInstance;
-    private final JsonWebToken jwt;
+    private final Instance<JsonWebToken> jwtInstance;
     private final IdentityUtils identityUtils;
 
     /**
      * Constructor-injected dependencies for CDI.
-     * Uses {@link Instance} for config so the filter can start even when the config mapping
-     * is not yet registered (e.g. classloader mismatch in some Quarkus test/consuming app setups).
+     * Uses {@link Instance} for config and JWT so the filter can start even when the config mapping
+     * or JWT producer is not yet registered (e.g. multi-tenant OIDC setups where JsonWebToken
+     * is only available after tenant resolution).
      *
      * @param configInstance security configuration (swagger protection enabled, etc.)
-     * @param jwt            current request's JWT (injected per-request by Quarkus OIDC)
-     * @param identityUtils utility for internal user detection
+     * @param jwtInstance    current request's JWT (injected per-request by Quarkus OIDC)
+     * @param identityUtils  utility for internal user detection
      */
-    public InternalOnlyFilter(Instance<LatticeSecurityConfig> configInstance, JsonWebToken jwt, IdentityUtils identityUtils) {
+    public InternalOnlyFilter(Instance<LatticeSecurityConfig> configInstance, Instance<JsonWebToken> jwtInstance, IdentityUtils identityUtils) {
         this.configInstance = configInstance;
-        this.jwt = jwt;
+        this.jwtInstance = jwtInstance;
         this.identityUtils = identityUtils;
     }
 
@@ -102,6 +103,7 @@ public class InternalOnlyFilter implements ContainerRequestFilter {
         }
 
         // Path is protected, validate user is internal
+        JsonWebToken jwt = jwtInstance.isResolvable() ? jwtInstance.get() : null;
         if (!identityUtils.isInternalUser(jwt)) {
             String email = identityUtils.getEmail(jwt);
             LOG.warnf("Access denied to documentation path %s for user: %s",
@@ -110,6 +112,7 @@ public class InternalOnlyFilter implements ContainerRequestFilter {
             ctx.abortWith(Response.status(Response.Status.FORBIDDEN)
                     .entity("Access to documentation is restricted to internal users")
                     .build());
+            return;
         }
 
         // Internal user, allow request to proceed
